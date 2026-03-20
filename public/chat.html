@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="fr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>NexaAI — Assistant</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="./style.css" />
+  </head>
+  <body class="app-body">
+
+    <!-- Sidebar -->
+    <aside class="sidebar" id="sidebar">
+      <div class="sidebar-top">
+        <div class="sidebar-brand">
+          <svg width="28" height="28" viewBox="0 0 40 40" fill="none">
+            <rect width="40" height="40" rx="12" fill="url(#gS)"/>
+            <path d="M20 8L28 14V26L20 32L12 26V14L20 8Z" stroke="white" stroke-width="1.5" fill="none"/>
+            <circle cx="20" cy="20" r="4" fill="white"/>
+            <defs>
+              <linearGradient id="gS" x1="0" y1="0" x2="40" y2="40">
+                <stop offset="0%" stop-color="#6366f1"/>
+                <stop offset="100%" stop-color="#06b6d4"/>
+              </linearGradient>
+            </defs>
+          </svg>
+          <span class="sidebar-brand-name">NexaAI</span>
+        </div>
+
+        <button id="newChatBtn" class="btn-new-chat">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+            <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+          </svg>
+          Nouvelle conversation
+        </button>
+      </div>
+
+      <div class="sidebar-body">
+        <div class="sidebar-section">
+          <p class="sidebar-label">Mode de l'assistant</p>
+          <select id="template" class="sidebar-select"></select>
+        </div>
+
+        <div class="sidebar-section">
+          <p class="sidebar-label">Modèle IA</p>
+          <select id="model" class="sidebar-select">
+            <option value="llama-3.3-70b-versatile">Llama 3.3 70B — Puissant</option>
+            <option value="meta-llama/llama-4-scout-17b-16e-instruct">Llama 4 Scout 17B — Équilibré</option>
+            <option value="qwen/qwen3-32b">Qwen 3 32B — Rapide</option>
+          </select>
+        </div>
+
+        <div class="sidebar-section">
+          <p class="sidebar-label">Langue de réponse</p>
+          <select id="language" class="sidebar-select">
+            <option value="fr">🇫🇷 Français</option>
+            <option value="en">🇬🇧 English</option>
+          </select>
+        </div>
+
+        <div class="sidebar-section">
+          <div class="slider-header">
+            <p class="sidebar-label">Créativité</p>
+            <span id="temperatureValue" class="slider-value">0.80</span>
+          </div>
+          <input id="temperature" type="range" min="0" max="1" step="0.05" value="0.8" class="slider" />
+          <div class="slider-labels"><span>Précis</span><span>Créatif</span></div>
+        </div>
+        <div class="sidebar-section">
+          <p class="sidebar-label">Rechercher dans l'historique</p>
+          <input type="text" id="searchInput" class="sidebar-input" placeholder="Rechercher un message…" autocomplete="off" />
+        </div>
+      </div>
+
+      <div class="sidebar-footer">
+        <div class="user-card">
+          <div class="user-avatar" id="userAvatar">U</div>
+          <div class="user-details">
+            <span class="user-email" id="userEmail">—</span>
+            <span class="user-plan">Compte gratuit</span>
+          </div>
+        </div>
+        <div class="sidebar-actions">
+          <button id="clearHistory" class="sidebar-action-btn">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polyline points="3 6 5 6 21 6"/>
+              <path d="M19 6l-1 14H6L5 6"/>
+              <path d="M10 11v6M14 11v6"/>
+            </svg>
+            Effacer l'historique
+          </button>
+          <button id="logout" class="sidebar-action-btn sidebar-action-btn--danger">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4"/>
+              <polyline points="16 17 21 12 16 7"/>
+              <line x1="21" y1="12" x2="9" y2="12"/>
+            </svg>
+            Se déconnecter
+          </button>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Overlay mobile -->
+    <div id="sidebarOverlay" class="sidebar-overlay" hidden></div>
+
+    <!-- Zone principale -->
+    <main class="chat-main">
+      <header class="chat-header">
+        <button id="menuToggle" class="icon-btn" aria-label="Menu">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="3" y1="6" x2="21" y2="6"/>
+            <line x1="3" y1="12" x2="21" y2="12"/>
+            <line x1="3" y1="18" x2="21" y2="18"/>
+          </svg>
+        </button>
+        <div class="header-info">
+          <div id="currentMode" class="header-mode">🤖 Assistant général</div>
+          <div id="conversationTitle" class="header-title" hidden></div>
+        </div>
+        <div class="header-spacer"></div>
+      </header>
+
+      <!-- État vide -->
+      <div id="emptyState" class="empty-state">
+        <div class="empty-glow"></div>
+        <div class="empty-logo">
+          <svg width="56" height="56" viewBox="0 0 40 40" fill="none">
+            <rect width="40" height="40" rx="12" fill="url(#gE)"/>
+            <path d="M20 8L28 14V26L20 32L12 26V14L20 8Z" stroke="white" stroke-width="1.5" fill="none"/>
+            <circle cx="20" cy="20" r="4" fill="white"/>
+            <defs>
+              <linearGradient id="gE" x1="0" y1="0" x2="40" y2="40">
+                <stop offset="0%" stop-color="#6366f1"/>
+                <stop offset="100%" stop-color="#06b6d4"/>
+              </linearGradient>
+            </defs>
+          </svg>
+        </div>
+        <h2>Comment puis-je vous aider ?</h2>
+        <p>Posez une question ou choisissez un point de départ ci-dessous</p>
+        <div class="quick-grid">
+          <button class="quick-card" data-prompt="Explique-moi simplement ce qu'est l'intelligence artificielle et comment elle fonctionne">
+            <span class="quick-icon">💡</span>
+            <span class="quick-title">Expliquer un concept</span>
+            <span class="quick-desc">Obtenez des explications claires sur n'importe quel sujet</span>
+          </button>
+          <button class="quick-card" data-prompt="Aide-moi à déboguer ce code :\n\n">
+            <span class="quick-icon">💻</span>
+            <span class="quick-title">Déboguer du code</span>
+            <span class="quick-desc">Trouvez et corrigez les erreurs dans votre code</span>
+          </button>
+          <button class="quick-card" data-prompt="Traduis ce texte en anglais :\n\n">
+            <span class="quick-icon">🌍</span>
+            <span class="quick-title">Traduire un texte</span>
+            <span class="quick-desc">Traduction précise dans toutes les langues</span>
+          </button>
+          <button class="quick-card" data-prompt="Résume ce texte en 3 points clés :\n\n">
+            <span class="quick-icon">📝</span>
+            <span class="quick-title">Résumer un texte</span>
+            <span class="quick-desc">Extrayez l'essentiel de n'importe quel document</span>
+          </button>
+          <button class="quick-card" data-prompt="Résous ce problème mathématique :\n\n">
+            <span class="quick-icon">🔢</span>
+            <span class="quick-title">Résoudre en maths</span>
+            <span class="quick-desc">Étapes détaillées pour tout problème</span>
+          </button>
+          <button class="quick-card" data-prompt="Aide-moi à rédiger un email professionnel pour :\n\n">
+            <span class="quick-icon">✍️</span>
+            <span class="quick-title">Rédiger un email</span>
+            <span class="quick-desc">Emails professionnels et percutants</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Messages -->
+      <div id="chat" class="chat-messages"></div>
+
+      <!-- Indicateur frappe -->
+      <div id="typingIndicator" class="typing-wrap" hidden>
+        <div class="typing-bubble">
+          <span></span><span></span><span></span>
+        </div>
+        <span class="typing-label">NexaAI réfléchit…</span>
+      </div>
+
+      <!-- Zone de saisie -->
+      <div class="input-zone">
+        <div class="input-box">
+          <textarea
+            id="input"
+            class="input-textarea"
+            placeholder="Écrivez votre message…"
+            rows="1"
+            autocomplete="off"
+          ></textarea>
+          <div class="input-controls">
+            <span id="charCount" class="char-counter">0</span>
+            <button id="sendBtn" class="send-btn" type="button" title="Envoyer (Entrée)">
+              <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                <line x1="22" y1="2" x2="11" y2="13"/>
+                <polygon points="22 2 15 22 11 13 2 9 22 2"/>
+              </svg>
+            </button>
+          </div>
+        </div>
+        <p class="input-footer">Propulsé par <strong>Groq</strong> · <strong>Llama 3</strong> · Maj+Entrée pour nouvelle ligne</p>
+      </div>
+
+      <div id="statusBar" class="status-line"></div>
+    </main>
+
+    <script src="./chat.js"></script>
+  </body>
+</html>
