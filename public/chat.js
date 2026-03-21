@@ -243,13 +243,39 @@ async function sendMessage(text) {
   let fullText = "";
   let streamBubble = null;
 
+  const RETRY_DELAYS = [2000, 4000, 8000];
+
   try {
-    const response = await fetch("/api/chat", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      credentials: "include",
-      body: JSON.stringify({ message: text, config: getConfig() }),
-    });
+    let response;
+    for (let attempt = 0; attempt <= RETRY_DELAYS.length; attempt++) {
+      try {
+        response = await fetch("/api/chat", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({ message: text, config: getConfig() }),
+        });
+      } catch (networkErr) {
+        if (attempt < RETRY_DELAYS.length) {
+          const delay = RETRY_DELAYS[attempt];
+          setStatus(`Connexion perdue, nouvelle tentative dans ${delay / 1000}s… (${attempt + 1}/${RETRY_DELAYS.length})`);
+          await new Promise(r => setTimeout(r, delay));
+          continue;
+        }
+        throw networkErr;
+      }
+
+      if (response.status === 502 || response.status === 503) {
+        if (attempt < RETRY_DELAYS.length) {
+          const delay = RETRY_DELAYS[attempt];
+          setStatus(`Serveur indisponible, nouvelle tentative dans ${delay / 1000}s… (${attempt + 1}/${RETRY_DELAYS.length})`);
+          await new Promise(r => setTimeout(r, delay));
+          continue;
+        }
+      }
+
+      break; // success or non-retryable error
+    }
 
     if (!response.ok) {
       const body = await response.json().catch(() => ({}));
