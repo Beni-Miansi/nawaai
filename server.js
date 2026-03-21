@@ -331,7 +331,15 @@ app.post("/api/chat", requireAuth, chatLimiter, async (req, res) => {
   res.setHeader("Content-Type", "text/event-stream");
   res.setHeader("Cache-Control", "no-cache");
   res.setHeader("Connection", "keep-alive");
+  res.setHeader("X-Accel-Buffering", "no"); // Disable nginx proxy buffering for SSE
   res.flushHeaders();
+
+  // Heartbeat to prevent proxy (nginx/Render) from closing idle SSE connections
+  const heartbeat = setInterval(() => {
+    if (!res.writableEnded) res.write(": heartbeat\n\n");
+  }, 15000);
+
+  req.on("close", () => clearInterval(heartbeat));
 
   try {
     const stream = await openai.chat.completions.create({
@@ -368,8 +376,12 @@ app.post("/api/chat", requireAuth, chatLimiter, async (req, res) => {
       error?.status === 429 || error?.code === "insufficient_quota"
         ? "Quota Groq épuisé. Vérifiez votre clé API sur console.groq.com."
         : error?.message || "Une erreur est survenue lors de la génération de la réponse.";
-    res.write(`data: ${JSON.stringify({ error: errMsg })}\n\n`);
-    res.end();
+    if (!res.writableEnded) {
+      res.write(`data: ${JSON.stringify({ error: errMsg })}\n\n`);
+      res.end();
+    }
+  } finally {
+    clearInterval(heartbeat);
   }
 });
 
