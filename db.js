@@ -6,7 +6,7 @@ async function getDb() {
   if (client) return client;
 
   client = createClient({
-    url: process.env.TURSO_DATABASE_URL || "file:local.db",
+    url: process.env.TURSO_DATABASE_URL || (process.env.VERCEL ? "file:/tmp/local.db" : "file:local.db"),
     authToken: process.env.TURSO_AUTH_TOKEN || undefined,
   });
 
