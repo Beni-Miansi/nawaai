@@ -7,7 +7,7 @@ const jwt = require("jsonwebtoken");
 const bcrypt = require("bcrypt");
 const OpenAI = require("openai");
 const rateLimit = require("express-rate-limit");
-const { init } = require("./db");
+const { getDb } = require("./db");
 
 // Load .env variables
 dotenv.config();
@@ -67,7 +67,6 @@ const openai = groqApiKey
       baseURL: "https://api.groq.com/openai/v1",
     })
   : null;
-const db = init();
 
 const TEMPLATE_PROMPTS = [
   {
@@ -157,59 +156,82 @@ function requireAuth(req, res, next) {
   }
 }
 
-function getUserByEmail(email) {
-  const stmt = db.prepare("SELECT * FROM users WHERE email = ?");
-  return stmt.get(email.toLowerCase());
+async function getUserByEmail(email) {
+  const db = await getDb();
+  const result = await db.execute({
+    sql: "SELECT * FROM users WHERE email = ?",
+    args: [email.toLowerCase()],
+  });
+  return result.rows[0] || null;
 }
 
-function createUser(email, passwordHash) {
-  const stmt = db.prepare(
-    "INSERT INTO users (email, password_hash, created_at) VALUES (?, ?, ?);"
-  );
-  const info = stmt.run(email.toLowerCase(), passwordHash, Date.now());
-  return { id: info.lastInsertRowid, email: email.toLowerCase() };
+async function createUser(email, passwordHash) {
+  const db = await getDb();
+  const result = await db.execute({
+    sql: "INSERT INTO users (email, password_hash, created_at) VALUES (?, ?, ?)",
+    args: [email.toLowerCase(), passwordHash, Date.now()],
+  });
+  return { id: Number(result.lastInsertRowid), email: email.toLowerCase() };
 }
 
-function getConversation(userId) {
-  const stmt = db.prepare(
-    "SELECT * FROM conversations WHERE user_id = ? ORDER BY id DESC LIMIT 1"
-  );
-  return stmt.get(userId);
+async function getConversation(userId) {
+  const db = await getDb();
+  const result = await db.execute({
+    sql: "SELECT * FROM conversations WHERE user_id = ? ORDER BY id DESC LIMIT 1",
+    args: [userId],
+  });
+  return result.rows[0] || null;
 }
 
-function createConversation(userId) {
-  const stmt = db.prepare(
-    "INSERT INTO conversations (user_id, created_at) VALUES (?, ?)"
-  );
-  const info = stmt.run(userId, Date.now());
-  return { id: info.lastInsertRowid, user_id: userId };
+async function createConversation(userId) {
+  const db = await getDb();
+  const result = await db.execute({
+    sql: "INSERT INTO conversations (user_id, created_at) VALUES (?, ?)",
+    args: [userId, Date.now()],
+  });
+  return { id: Number(result.lastInsertRowid), user_id: userId };
 }
 
-function addMessage(conversationId, role, content) {
-  const stmt = db.prepare(
-    "INSERT INTO messages (conversation_id, role, content, created_at) VALUES (?, ?, ?, ?)"
-  );
-  stmt.run(conversationId, role, content, Date.now());
+async function addMessage(conversationId, role, content) {
+  const db = await getDb();
+  await db.execute({
+    sql: "INSERT INTO messages (conversation_id, role, content, created_at) VALUES (?, ?, ?, ?)",
+    args: [conversationId, role, content, Date.now()],
+  });
 }
 
-function getLastMessages(conversationId, limit = 20) {
-  const stmt = db.prepare(
-    "SELECT role, content FROM messages WHERE conversation_id = ? ORDER BY id DESC LIMIT ?"
-  );
-  const rows = stmt.all(conversationId, limit);
-  return rows.reverse();
+async function getLastMessages(conversationId, limit = 20) {
+  const db = await getDb();
+  const result = await db.execute({
+    sql: "SELECT role, content FROM messages WHERE conversation_id = ? ORDER BY id DESC LIMIT ?",
+    args: [conversationId, limit],
+  });
+  return [...result.rows].reverse();
 }
 
-function updateConversationTitle(conversationId, title) {
-  const stmt = db.prepare("UPDATE conversations SET title = ? WHERE id = ?");
-  stmt.run(title, conversationId);
+async function updateConversationTitle(conversationId, title) {
+  const db = await getDb();
+  await db.execute({
+    sql: "UPDATE conversations SET title = ? WHERE id = ?",
+    args: [title, conversationId],
+  });
 }
 
-function searchMessages(conversationId, query) {
-  const stmt = db.prepare(
-    "SELECT role, content FROM messages WHERE conversation_id = ? AND content LIKE ? ORDER BY id DESC LIMIT 30"
-  );
-  return stmt.all(conversationId, `%${query}%`);
+async function searchMessages(conversationId, query) {
+  const db = await getDb();
+  const result = await db.execute({
+    sql: "SELECT role, content FROM messages WHERE conversation_id = ? AND content LIKE ? ORDER BY id DESC LIMIT 30",
+    args: [conversationId, `%${query}%`],
+  });
+  return result.rows;
+}
+
+async function clearMessages(conversationId) {
+  const db = await getDb();
+  await db.execute({
+    sql: "DELETE FROM messages WHERE conversation_id = ?",
+    args: [conversationId],
+  });
 }
 
 app.post("/api/auth/register", authLimiter, async (req, res) => {
@@ -227,13 +249,13 @@ app.post("/api/auth/register", authLimiter, async (req, res) => {
     return res.status(400).json({ error: "Le mot de passe doit contenir au moins 8 caractères." });
   }
 
-  if (getUserByEmail(email)) {
+  if (await getUserByEmail(email)) {
     return res.status(400).json({ error: "Cet email est déjà utilisé." });
   }
 
   try {
     const hash = await bcrypt.hash(password, 10);
-    const user = createUser(email, hash);
+    const user = await createUser(email, hash);
     const token = signToken(user);
     res.cookie("token", token, {
       httpOnly: true,
@@ -253,7 +275,7 @@ app.post("/api/auth/login", authLimiter, async (req, res) => {
     return res.status(400).json({ error: "Email et mot de passe requis." });
   }
 
-  const user = getUserByEmail(email);
+  const user = await getUserByEmail(email);
   if (!user) {
     return res.status(401).json({ error: "Identifiants invalides." });
   }
@@ -301,9 +323,9 @@ app.post("/api/chat", requireAuth, chatLimiter, async (req, res) => {
   }
 
   const userId = req.user.userId;
-  let conversation = getConversation(userId);
+  let conversation = await getConversation(userId);
   if (!conversation) {
-    conversation = createConversation(userId);
+    conversation = await createConversation(userId);
   }
 
   const model = config?.model || "llama-3.3-70b-versatile";
@@ -319,7 +341,7 @@ app.post("/api/chat", requireAuth, chatLimiter, async (req, res) => {
       : "IMPORTANT : Réponds toujours en français, quelle que soit la langue utilisée par l'utilisateur.";
   const systemPrompt = `${basePrompt}\n\n${langInstruction}`;
 
-  const history = getLastMessages(conversation.id, 20);
+  const history = await getLastMessages(conversation.id, 20);
   const isFirstMessage = history.length === 0;
   const conversationMessages = [
     { role: "system", content: systemPrompt },
@@ -351,13 +373,13 @@ app.post("/api/chat", requireAuth, chatLimiter, async (req, res) => {
       }
     }
 
-    addMessage(conversation.id, "user", message);
-    addMessage(conversation.id, "assistant", fullContent || "");
+    await addMessage(conversation.id, "user", message);
+    await addMessage(conversation.id, "assistant", fullContent || "");
 
     let title;
     if (isFirstMessage && fullContent) {
       title = message.replace(/\s+/g, " ").slice(0, 60).trim();
-      updateConversationTitle(conversation.id, title);
+      await updateConversationTitle(conversation.id, title);
     }
 
     res.write(`data: ${JSON.stringify({ done: true, ...(title && { title }) })}\n\n`);
@@ -373,39 +395,37 @@ app.post("/api/chat", requireAuth, chatLimiter, async (req, res) => {
   }
 });
 
-app.get("/api/history", requireAuth, (req, res) => {
+app.get("/api/history", requireAuth, async (req, res) => {
   const userId = req.user.userId;
-  const conversation = getConversation(userId);
+  const conversation = await getConversation(userId);
   if (!conversation) {
     return res.json({ history: [] });
   }
-  const history = getLastMessages(conversation.id, 50);
+  const history = await getLastMessages(conversation.id, 50);
   res.json({ history });
 });
 
-app.post("/api/history/clear", requireAuth, (req, res) => {
+app.post("/api/history/clear", requireAuth, async (req, res) => {
   const userId = req.user.userId;
-  const conversation = getConversation(userId);
+  const conversation = await getConversation(userId);
   if (!conversation) {
     return res.json({ ok: true });
   }
-
-  const stmt = db.prepare("DELETE FROM messages WHERE conversation_id = ?");
-  stmt.run(conversation.id);
+  await clearMessages(conversation.id);
   res.json({ ok: true });
 });
 
-app.get("/api/history/search", requireAuth, (req, res) => {
+app.get("/api/history/search", requireAuth, async (req, res) => {
   const q = (req.query.q || "").trim();
   if (!q || q.length < 2) {
     return res.json({ results: [] });
   }
   const userId = req.user.userId;
-  const conversation = getConversation(userId);
+  const conversation = await getConversation(userId);
   if (!conversation) {
     return res.json({ results: [] });
   }
-  const results = searchMessages(conversation.id, q);
+  const results = await searchMessages(conversation.id, q);
   res.json({ results });
 });
 
@@ -413,6 +433,10 @@ app.get("/api/health", (req, res) => {
   res.json({ status: "ok" });
 });
 
-app.listen(port, () => {
-  console.log(`🚀 Server running: http://localhost:${port}`);
-});
+if (require.main === module) {
+  app.listen(port, () => {
+    console.log(`🚀 Server running: http://localhost:${port}`);
+  });
+}
+
+module.exports = app;

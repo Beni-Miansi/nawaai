@@ -17,8 +17,8 @@
   "author": "",
   "license": "MIT",
   "dependencies": {
+    "@libsql/client": "^0.14.0",
     "bcrypt": "^6.0.0",
-    "better-sqlite3": "^12.8.0",
     "cookie-parser": "^1.4.6",
     "cors": "^2.8.5",
     "dotenv": "^16.3.1",

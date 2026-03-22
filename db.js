@@ -1,56 +1,50 @@
-const fs = require("fs");
-const path = require("path");
-const Database = require("better-sqlite3");
+const { createClient } = require("@libsql/client");
 
-const dataDir = path.join(__dirname, "data");
-const dbPath = path.join(dataDir, "app.db");
+let client = null;
 
-function ensureDataDir() {
-  if (!fs.existsSync(dataDir)) {
-    fs.mkdirSync(dataDir, { recursive: true });
-  }
-}
+async function getDb() {
+  if (client) return client;
 
-function init() {
-  ensureDataDir();
-  const db = new Database(dbPath);
+  client = createClient({
+    url: process.env.TURSO_DATABASE_URL || "file:local.db",
+    authToken: process.env.TURSO_AUTH_TOKEN || undefined,
+  });
 
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS users (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      email TEXT NOT NULL UNIQUE,
-      password_hash TEXT NOT NULL,
-      created_at INTEGER NOT NULL
-    );
-
-    CREATE TABLE IF NOT EXISTS conversations (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      user_id INTEGER NOT NULL,
-      title TEXT,
-      created_at INTEGER NOT NULL,
-      FOREIGN KEY (user_id) REFERENCES users(id)
-    );
-
-    CREATE TABLE IF NOT EXISTS messages (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      conversation_id INTEGER NOT NULL,
-      role TEXT NOT NULL,
-      content TEXT NOT NULL,
-      created_at INTEGER NOT NULL,
-      FOREIGN KEY (conversation_id) REFERENCES conversations(id)
-    );
-  `);
+  await client.batch(
+    [
+      `CREATE TABLE IF NOT EXISTS users (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        email TEXT NOT NULL UNIQUE,
+        password_hash TEXT NOT NULL,
+        created_at INTEGER NOT NULL
+      )`,
+      `CREATE TABLE IF NOT EXISTS conversations (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL,
+        title TEXT,
+        created_at INTEGER NOT NULL,
+        FOREIGN KEY (user_id) REFERENCES users(id)
+      )`,
+      `CREATE TABLE IF NOT EXISTS messages (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        conversation_id INTEGER NOT NULL,
+        role TEXT NOT NULL,
+        content TEXT NOT NULL,
+        created_at INTEGER NOT NULL,
+        FOREIGN KEY (conversation_id) REFERENCES conversations(id)
+      )`,
+    ],
+    "write"
+  );
 
   // Migration : ajouter la colonne title si elle n'existe pas encore
   try {
-    db.exec("ALTER TABLE conversations ADD COLUMN title TEXT");
+    await client.execute("ALTER TABLE conversations ADD COLUMN title TEXT");
   } catch (_) {
     // Colonne déjà présente, on ignore
   }
 
-  return db;
+  return client;
 }
 
-module.exports = {
-  init,
-};
+module.exports = { getDb };
