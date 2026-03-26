@@ -243,7 +243,8 @@ async function sendMessage(text) {
   let fullText = "";
   let streamBubble = null;
 
-  const RETRY_DELAYS = [2000, 4000, 8000];
+  // Longer delays to handle Render.com free-tier cold starts (can take 30-60s)
+  const RETRY_DELAYS = [3000, 6000, 15000, 30000];
 
   try {
     let response;
@@ -268,10 +269,12 @@ async function sendMessage(text) {
       if (response.status === 502 || response.status === 503) {
         if (attempt < RETRY_DELAYS.length) {
           const delay = RETRY_DELAYS[attempt];
-          setStatus(`Serveur indisponible, nouvelle tentative dans ${delay / 1000}s… (${attempt + 1}/${RETRY_DELAYS.length})`);
+          setStatus(`Le serveur se réveille, nouvelle tentative dans ${delay / 1000}s… (${attempt + 1}/${RETRY_DELAYS.length})`);
           await new Promise(r => setTimeout(r, delay));
           continue;
         }
+        // All retries exhausted for 502/503
+        throw new Error("Le serveur est temporairement indisponible. Veuillez réessayer dans quelques instants.");
       }
 
       break; // success or non-retryable error

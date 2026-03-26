@@ -334,10 +334,13 @@ app.post("/api/chat", requireAuth, chatLimiter, async (req, res) => {
   res.setHeader("X-Accel-Buffering", "no"); // Disable nginx proxy buffering for SSE
   res.flushHeaders();
 
-  // Heartbeat to prevent proxy (nginx/Render) from closing idle SSE connections
+  // Send immediate comment to confirm connection before calling Groq API
+  res.write(": connected\n\n");
+
+  // Heartbeat every 10s to prevent proxy (nginx/Render) from closing idle SSE connections
   const heartbeat = setInterval(() => {
     if (!res.writableEnded) res.write(": heartbeat\n\n");
-  }, 15000);
+  }, 10000);
 
   req.on("close", () => clearInterval(heartbeat));
 
